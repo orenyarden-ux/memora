@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Memora — Smart Reminders for Patients</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
     --green: #2E9E6B; --green-dark: #1a7a50; --green-light: #E8F5EE;
@@ -894,28 +894,186 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
   });
 });
 
-// PDF download
+// PDF download - clean text-based PDF, works for all languages
 function downloadPDF() {
   var btn = document.getElementById("pdf-btn");
   var orig = btn.textContent;
   btn.textContent = "⏳ Generating...";
-  document.querySelector("nav").style.display = "none";
-  document.getElementById("mobile-menu").style.display = "none";
-  var opt = {
-    margin: 0, filename: "Memora-Presentation.pdf",
-    image: { type: "jpeg", quality: 0.9 },
-    html2canvas: { scale: 1.4, useCORS: true, logging: false },
-    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
-  };
-  html2pdf().set(opt).from(document.body).save().then(function() {
-    document.querySelector("nav").style.display = "";
-    document.getElementById("mobile-menu").style.display = "";
-    btn.textContent = orig;
-  }).catch(function() {
-    document.querySelector("nav").style.display = "";
-    document.getElementById("mobile-menu").style.display = "";
-    btn.textContent = orig;
-  });
+
+  try {
+    var T = TRANSLATIONS[currentLang] || TRANSLATIONS["en"];
+    var isRTL = (currentLang === "he" || currentLang === "ar");
+    var { jsPDF } = window.jspdf;
+    var doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+
+    var pageW = 210;
+    var pageH = 297;
+    var margin = 18;
+    var contentW = pageW - margin * 2;
+    var y = 0;
+    var lineH = 7;
+
+    function newPage() {
+      doc.addPage();
+      y = margin;
+    }
+
+    function checkY(needed) {
+      if (y + needed > pageH - margin) newPage();
+    }
+
+    function addText(text, fontSize, isBold, color, align, maxWidth) {
+      doc.setFontSize(fontSize);
+      doc.setFont("helvetica", isBold ? "bold" : "normal");
+      doc.setTextColor(color || "#1A2E22");
+      var x = margin;
+      var w = maxWidth || contentW;
+      if (align === "center") x = pageW / 2;
+      var lines = doc.splitTextToSize(text, w);
+      checkY(lines.length * lineH + 2);
+      doc.text(lines, x, y, { align: align || "left" });
+      y += lines.length * lineH + 2;
+    }
+
+    function addDivider(color) {
+      checkY(6);
+      doc.setDrawColor(color || "#2E9E6B");
+      doc.setLineWidth(0.4);
+      doc.line(margin, y, pageW - margin, y);
+      y += 5;
+    }
+
+    function addSpacer(h) { y += (h || 4); }
+
+    // ── HEADER ──
+    doc.setFillColor("#2E9E6B");
+    doc.rect(0, 0, pageW, 38, "F");
+    doc.setFontSize(26);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor("#FFFFFF");
+    doc.text("Memora", pageW / 2, 17, { align: "center" });
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    var subtitle = T["hero_desc"] || "Smart Reminders for Patients";
+    // strip any HTML tags
+    subtitle = subtitle.replace(/<[^>]*>/g, "");
+    var subLines = doc.splitTextToSize(subtitle, contentW);
+    doc.text(subLines.slice(0, 2), pageW / 2, 27, { align: "center" });
+    y = 46;
+
+    // ── TAGLINE ──
+    addText(T["hero_h1"] ? T["hero_h1"].replace(/<[^>]*>/g, "") : "Memora", 17, true, "#2E9E6B", "center");
+    addSpacer(2);
+    addDivider();
+
+    // ── FEATURES ──
+    addSpacer(2);
+    addText(T["features_title"] || "Key Features", 14, true, "#1A2E22");
+    addSpacer(3);
+
+    var features = [
+      { icon: "🔔", title: T["f1_title"], desc: T["f1_desc"] },
+      { icon: "🤖", title: T["f2_title"], desc: T["f2_desc"] },
+      { icon: "👨‍👩‍👧", title: T["f3_title"], desc: T["f3_desc"] },
+      { icon: "📊", title: T["f4_title"], desc: T["f4_desc"] },
+      { icon: "📍", title: T["f5_title"], desc: T["f5_desc"] },
+      { icon: "📞", title: T["f6_title"], desc: T["f6_desc"] },
+      { icon: "🌐", title: T["f7_title"], desc: T["f7_desc"] },
+      { icon: "🔒", title: T["f8_title"], desc: T["f8_desc"] }
+    ];
+
+    features.forEach(function(f) {
+      if (!f.title) return;
+      checkY(18);
+      // colored bullet box
+      doc.setFillColor("#E8F5EE");
+      doc.roundedRect(margin, y - 4, contentW, 16, 3, 3, "F");
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor("#2E9E6B");
+      doc.text(f.title, margin + 4, y + 3);
+      y += 7;
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor("#5C7A68");
+      var descLines = doc.splitTextToSize(f.desc || "", contentW - 8);
+      doc.text(descLines, margin + 4, y + 1);
+      y += descLines.length * 5 + 5;
+    });
+
+    addSpacer(2);
+    addDivider();
+
+    // ── PERMISSIONS ──
+    checkY(12);
+    addText(T["perm_title"] || "Permissions", 14, true, "#1A2E22");
+    addSpacer(3);
+
+    var perms = [
+      { name: "POST_NOTIFICATIONS", desc: T["p1"] },
+      { name: "FOREGROUND_SERVICE",  desc: T["p2"] },
+      { name: "RECEIVE_BOOT_COMPLETED", desc: T["p3"] },
+      { name: "ACCESS_FINE_LOCATION", desc: T["p4"] },
+      { name: "ACCESS_BACKGROUND_LOCATION", desc: T["p5"] },
+      { name: "RECORD_AUDIO", desc: T["p6"] },
+      { name: "CAMERA", desc: T["p7"] },
+      { name: "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", desc: T["p8"] }
+    ];
+
+    perms.forEach(function(p) {
+      if (!p.desc) return;
+      checkY(12);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor("#2E9E6B");
+      doc.text(p.name, margin, y);
+      y += 5;
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor("#5C7A68");
+      var dlines = doc.splitTextToSize(p.desc, contentW);
+      doc.text(dlines, margin, y);
+      y += dlines.length * 4.5 + 3;
+    });
+
+    addSpacer(2);
+    addDivider();
+
+    // ── MEDICAL DECLARATION ──
+    checkY(24);
+    doc.setFillColor("#FFF8E1");
+    doc.roundedRect(margin, y, contentW, 22, 4, 4, "F");
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor("#E67E22");
+    doc.text("⚕ " + (T["med_title"] || "Medical Declaration"), margin + 4, y + 7);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor("#5C7A68");
+    var medLines = doc.splitTextToSize(T["med_text"] || "", contentW - 8);
+    doc.text(medLines, margin + 4, y + 14);
+    y += 26;
+
+    addSpacer(4);
+
+    // ── FOOTER ──
+    var totalPages = doc.internal.getNumberOfPages();
+    for (var i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFillColor("#2E9E6B");
+      doc.rect(0, pageH - 12, pageW, 12, "F");
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor("#FFFFFF");
+      doc.text("Memora © 2026 On Marketing  |  orenyarden@gmail.com", pageW / 2, pageH - 5, { align: "center" });
+      doc.text(i + " / " + totalPages, pageW - margin, pageH - 5, { align: "right" });
+    }
+
+    doc.save("Memora-" + currentLang.toUpperCase() + ".pdf");
+  } catch(e) {
+    alert("PDF generation failed: " + e.message);
+  }
+
+  btn.textContent = orig;
 }
 
 // Fade in on scroll
